@@ -8,12 +8,13 @@ import (
 )
 
 const (
-	defaultRpcRetryDelay      = 3 * time.Second
-	defaultRpcRetryAttempts   = 5
-	maxBlobSizeBytes          = 75000
-	defaultBatchRetryDelay    = 10 * time.Second
-	defaultBatchRetryAttempts = 10
-	fromAddress               = "kaspatest:qp75u7cuphjwyq9j6ghe2v0j3gtvxlppyurq279h4ckpdc7umdh6vrusw9c7d"
+	defaultRpcRetryDelay          = 3 * time.Second
+	defaultRpcRetryAttempts       = 5
+	maxBlobSizeBytes              = 75000
+	defaultBatchRetryDelay        = 10 * time.Second
+	defaultBatchRetryAttempts     = 10
+	TRANSIENT_BYTE_TO_MASS_FACTOR = 4
+	fromAddress                   = "kaspatest:qp75u7cuphjwyq9j6ghe2v0j3gtvxlppyurq279h4ckpdc7umdh6vrusw9c7d"
 )
 
 // Config stores Sui DALC configuration parameters.

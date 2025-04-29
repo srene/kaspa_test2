@@ -2,14 +2,12 @@ package kaspa
 
 import (
 	"sort"
-	"time"
 
 	"github.com/kaspanet/kaspad/app/appmessage"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/utils"
 	"github.com/kaspanet/kaspad/domain/consensus/model/externalapi"
 	"github.com/kaspanet/kaspad/domain/consensus/utils/constants"
-	"github.com/kaspanet/kaspad/util"
 	"github.com/pkg/errors"
 )
 
@@ -62,11 +60,16 @@ func (c *Client) updateUTXOSet(entries []*appmessage.UTXOsByAddressesEntry, memp
 		}
 
 		// No need to lock for reading since the only writer of this set is on `syncLoop` on the same goroutine.
-		address, ok := c.addressSet[entry.Address]
+		/*address, ok := c.addressSet[entry.Address]
 		if !ok {
 			return errors.Errorf("Got result from address %s even though it wasn't requested", entry.Address)
-		}
+		}*/
 
+		address := &walletAddress{
+			index:         1,
+			cosignerIndex: 0,
+			keyChain:      libkaspawallet.ExternalKeychain,
+		}
 		utxo := &walletUTXO{
 			Outpoint:  outpoint,
 			UTXOEntry: utxoEntry,
@@ -79,102 +82,35 @@ func (c *Client) updateUTXOSet(entries []*appmessage.UTXOsByAddressesEntry, memp
 			utxos = append(utxos, &walletUTXO{
 				Outpoint:  outpoint,
 				UTXOEntry: utxoEntry,
-				//address:   address,
+				address:   address,
 			})
 		}
 	}
 
 	sort.Slice(utxos, func(i, j int) bool { return utxos[i].UTXOEntry.Amount() > utxos[j].UTXOEntry.Amount() })
-	c.startTimeOfLastCompletedRefresh = time.Now()
+	//c.startTimeOfLastCompletedRefresh = time.Now()
 
 	c.utxosSortedByAmount = utxos
 	c.mempoolExcludedUTXOs = mempoolExcludedUTXOs
 
 	// Cleanup expired used outpoints to avoid a memory leak
-	for outpoint, broadcastTime := range c.usedOutpoints {
+	/*for outpoint, broadcastTime := range c.usedOutpoints {
 		if c.usedOutpointHasExpired(broadcastTime) {
 			delete(c.usedOutpoints, outpoint)
 		}
-	}
+	}*/
 
 	return nil
 }
 
-func (c *Client) usedOutpointHasExpired(outpointBroadcastTime time.Time) bool {
+/*func (c *Client) usedOutpointHasExpired(outpointBroadcastTime time.Time) bool {
 	// If the node returns a UTXO we previously attempted to spend and enough time has passed, we assume
 	// that the network rejected or lost the previous transaction and allow a reuse. We set this time
 	// interval to a minute.
 	// We also verify that a full refresh UTXO operation started after this time point and has already
 	// completed, in order to make sure that indeed this state reflects a state obtained following the required wait time.
 	return c.startTimeOfLastCompletedRefresh.After(outpointBroadcastTime.Add(time.Minute))
-}
-
-func (c *Client) createUnsignedTransactions(address string, blob []byte) ([][]byte, error) {
-
-	/*amount, err := utils.KasToSompi("1")
-	if err != nil {
-		return nil, err
-	}*/
-	feeRate, maxFee, err := c.calculateFeeLimits()
-	if err != nil {
-		return nil, err
-	}
-
-	// make sure address string is correct before proceeding to a
-	// potentially long UTXO refreshment operation
-	toAddress, err := util.DecodeAddress(address, c.params.Prefix)
-	if err != nil {
-		return nil, err
-	}
-
-	var fromAddresses []*walletAddress
-
-	changeAddress, err := util.DecodeAddress(fromAddress, c.params.Prefix)
-	if err != nil {
-		return nil, err
-	}
-	/*changeAddress, changeWalletAddress, err := s.changeAddress(true, fromAddresses)
-	if err != nil {
-		return nil, err
-	}*/
-
-	selectedUTXOs, spendValue, changeSompi, err := c.selectUTXOs(feeRate, maxFee, fromAddresses, blob)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(selectedUTXOs) == 0 {
-		return nil, errors.Errorf("couldn't find funds to spend")
-	}
-
-	payments := []*libkaspawallet.Payment{{
-		Address: toAddress,
-		Amount:  spendValue,
-	}}
-	if changeSompi > 0 {
-		payments = append(payments, &libkaspawallet.Payment{
-			Address: changeAddress,
-			Amount:  changeSompi,
-		})
-	}
-	/*unsignedTransaction, err := createUnsignedTransaction(s.keysFile.ExtendedPublicKeys,
-	payments, selectedUTXOs, blob)*/
-	publickey, err := c.extendedKey.Public()
-	if err != nil {
-		return nil, err
-	}
-	unsignedTransaction, err := createUnsignedTransaction(publickey.String(), payments, selectedUTXOs, blob)
-	if err != nil {
-		return nil, err
-	}
-
-	unsignedTransactions, err := c.maybeAutoCompoundTransaction(unsignedTransaction, toAddress, nil, nil, feeRate, maxFee)
-	if err != nil {
-		return nil, err
-	}
-
-	return unsignedTransactions, nil
-}
+}*/
 
 /*
 func (s *Client) selectUTXOs(spendAmount uint64, feeRate float64, maxFee uint64, fromAddresses []*walletAddress, blob []byte) (
@@ -192,7 +128,7 @@ func (s *Client) selectUTXOs(feeRate float64, maxFee uint64, fromAddresses []*wa
 		return nil, 0, 0, err
 	}
 
-	preSelectedSet := make(map[externalapi.DomainOutpoint]struct{})
+	//preSelectedSet := make(map[externalapi.DomainOutpoint]struct{})
 	/*for _, utxo := range preSelectedUTXOs {
 		preSelectedSet[*utxo.Outpoint] = struct{}{}
 	}*/
@@ -204,13 +140,14 @@ func (s *Client) selectUTXOs(feeRate float64, maxFee uint64, fromAddresses []*wa
 	}
 
 	var fee uint64
-	iteration := func(utxo *walletUTXO, avoidPreselected bool) (bool, error) {
+	//iteration := func(utxo *walletUTXO, avoidPreselected bool) (bool, error) {
+	iteration := func(utxo *walletUTXO) (bool, error) {
 		if (fromAddresses != nil && !walletAddressesContain(fromAddresses, utxo.address)) ||
 			!s.isUTXOSpendable(utxo, dagInfo.VirtualDAAScore) {
 			return true, nil
 		}
 
-		if broadcastTime, ok := s.usedOutpoints[*utxo.Outpoint]; ok {
+		/*if broadcastTime, ok := s.usedOutpoints[*utxo.Outpoint]; ok {
 			//if _, ok := allowUsed[*utxo.Outpoint]; !ok {
 			if s.usedOutpointHasExpired(broadcastTime) {
 				delete(s.usedOutpoints, *utxo.Outpoint)
@@ -224,7 +161,7 @@ func (s *Client) selectUTXOs(feeRate float64, maxFee uint64, fromAddresses []*wa
 			if _, ok := preSelectedSet[*utxo.Outpoint]; ok {
 				return true, nil
 			}
-		}
+		}*/
 
 		selectedUTXOs = append(selectedUTXOs, &libkaspawallet.UTXO{
 			Outpoint:       utxo.Outpoint,
@@ -268,7 +205,8 @@ func (s *Client) selectUTXOs(feeRate float64, maxFee uint64, fromAddresses []*wa
 
 	//if shouldContinue {
 	for _, utxo := range s.utxosSortedByAmount {
-		shouldContinue, err := iteration(utxo, true)
+		//shouldContinue, err := iteration(utxo, true)
+		shouldContinue, err := iteration(utxo)
 		if err != nil {
 			return nil, 0, 0, err
 		}

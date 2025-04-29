@@ -1,6 +1,8 @@
 package kaspa
 
 import (
+	"fmt"
+
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet/bip32"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet/serialization"
@@ -11,6 +13,73 @@ import (
 	"github.com/kaspanet/kaspad/domain/miningmanager/mempool"
 	"github.com/kaspanet/kaspad/util"
 )
+
+func (c *Client) createUnsignedTransactions(address string, blob []byte) ([][]byte, error) {
+
+	/*amount, err := utils.KasToSompi("1")
+	if err != nil {
+		return nil, err
+	}*/
+	feeRate, maxFee, err := c.calculateFeeLimits()
+	if err != nil {
+		return nil, err
+	}
+
+	// make sure address string is correct before proceeding to a
+	// potentially long UTXO refreshment operation
+	toAddress, err := util.DecodeAddress(address, c.params.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	var fromAddresses []*walletAddress
+
+	changeAddress, err := util.DecodeAddress(fromAddress, c.params.Prefix)
+	if err != nil {
+		return nil, err
+	}
+	/*changeAddress, changeWalletAddress, err := s.changeAddress(true, fromAddresses)
+	if err != nil {
+		return nil, err
+	}*/
+
+	selectedUTXOs, spendValue, changeSompi, err := c.selectUTXOs(feeRate, maxFee, fromAddresses, blob)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(selectedUTXOs) == 0 {
+		return nil, fmt.Errorf("couldn't find funds to spend")
+	}
+
+	payments := []*libkaspawallet.Payment{{
+		Address: toAddress,
+		Amount:  spendValue,
+	}}
+	if changeSompi > 0 {
+		payments = append(payments, &libkaspawallet.Payment{
+			Address: changeAddress,
+			Amount:  changeSompi,
+		})
+	}
+	/*unsignedTransaction, err := createUnsignedTransaction(s.keysFile.ExtendedPublicKeys,
+	payments, selectedUTXOs, blob)*/
+	publickey, err := c.extendedKey.Public()
+	if err != nil {
+		return nil, err
+	}
+	unsignedTransaction, err := createUnsignedTransaction(publickey.String(), payments, selectedUTXOs, blob)
+	if err != nil {
+		return nil, err
+	}
+
+	unsignedTransactions, err := c.maybeAutoCompoundTransaction(unsignedTransaction, toAddress, nil, nil, feeRate, maxFee, blob)
+	if err != nil {
+		return nil, err
+	}
+
+	return unsignedTransactions, nil
+}
 
 /*
 func createUnsignedTransaction(
@@ -108,9 +177,9 @@ func createUnsignedTransaction(
 // An additional `mergeTransaction` is generated - which merges the outputs of the above splits into a single output
 // paying to the original transaction's payee.
 func (s *Client) maybeAutoCompoundTransaction(transaction *serialization.PartiallySignedTransaction, toAddress util.Address,
-	changeAddress util.Address, changeWalletAddress *walletAddress, feeRate float64, maxFee uint64) ([][]byte, error) {
+	changeAddress util.Address, changeWalletAddress *walletAddress, feeRate float64, maxFee uint64, blob []byte) ([][]byte, error) {
 
-	splitTransactions, err := s.maybeSplitAndMergeTransaction(transaction, toAddress, changeAddress, changeWalletAddress, feeRate, maxFee)
+	splitTransactions, err := s.maybeSplitAndMergeTransaction(transaction, toAddress, changeAddress, changeWalletAddress, feeRate, maxFee, blob)
 	if err != nil {
 		return nil, err
 	}
@@ -125,56 +194,64 @@ func (s *Client) maybeAutoCompoundTransaction(transaction *serialization.Partial
 }
 
 func (s *Client) maybeSplitAndMergeTransaction(transaction *serialization.PartiallySignedTransaction, toAddress util.Address,
-	changeAddress util.Address, changeWalletAddress *walletAddress, feeRate float64, maxFee uint64) ([]*serialization.PartiallySignedTransaction, error) {
+	changeAddress util.Address, changeWalletAddress *walletAddress, feeRate float64, maxFee uint64, blob []byte) ([]*serialization.PartiallySignedTransaction, error) {
 
 	transactionMass, err := s.estimateComputeMassAfterSignatures(transaction)
 	if err != nil {
 		return nil, err
 	}
+	transientMass, err := s.estimateTransientMassAfterSignatures(transaction)
 
-	if transactionMass < mempool.MaximumStandardTransactionMass {
+	/*if transactionMass >= mempool.MaximumStandardTransactionMass {
+		panic("transaction mass to high")
+	}*/
+
+	if max(transientMass, transactionMass) < mempool.MaximumStandardTransactionMass {
 		return []*serialization.PartiallySignedTransaction{transaction}, nil
 	} else {
-		panic("mass overflown")
+		panic("transaction mass to high")
 	}
+}
 
-	/*splitCount, inputCountPerSplit, err := s.splitAndInputPerSplitCounts(transaction, transactionMass, changeAddress, feeRate, maxFee)
-	if err != nil {
-		return nil, err
-	}
-
-	splitTransactions := make([]*serialization.PartiallySignedTransaction, splitCount)
-	for i := 0; i < splitCount; i++ {
-		startIndex := i * inputCountPerSplit
-		endIndex := startIndex + inputCountPerSplit
-		var err error
-		splitTransactions[i], err = s.createSplitTransaction(transaction, changeAddress, startIndex, endIndex, feeRate, maxFee)
+/*splitCount, inputCountPerSplit, err := s.splitAndInputPerSplitCounts(transaction, transactionMass,transientMass, changeAddress, feeRate, maxFee, blob)
 		if err != nil {
 			return nil, err
 		}
+		//fmt.Println(splitCount, inputCountPerSplit)
+		//return nil, nil
+		splitTransactions := make([]*serialization.PartiallySignedTransaction, splitCount)
+		for i := 0; i < splitCount; i++ {
+			startIndex := i * inputCountPerSplit
+			endIndex := startIndex + inputCountPerSplit
+			var err error
+			splitTransactions[i], err = s.createSplitTransaction(transaction, changeAddress, startIndex, endIndex, feeRate, maxFee)
+			if err != nil {
+				return nil, err
+			}
 
-	}
-
-	if len(splitTransactions) > 1 {
-		mergeTransaction, err := s.mergeTransaction(splitTransactions, transaction, toAddress, changeAddress, changeWalletAddress, feeRate, maxFee)
-		if err != nil {
-			return nil, err
 		}
-		// Recursion will be 2-3 iterations deep even in the rarest` cases, so considered safe..
-		splitMergeTransaction, err := s.maybeSplitAndMergeTransaction(mergeTransaction, toAddress, changeAddress, changeWalletAddress, feeRate, maxFee)
-		if err != nil {
-			return nil, err
+
+		if len(splitTransactions) > 1 {
+			mergeTransaction, err := s.mergeTransaction(splitTransactions, transaction, toAddress, changeAddress, changeWalletAddress, feeRate, maxFee)
+			if err != nil {
+				return nil, err
+			}
+			// Recursion will be 2-3 iterations deep even in the rarest` cases, so considered safe..
+			splitMergeTransaction, err := s.maybeSplitAndMergeTransaction(mergeTransaction, toAddress, changeAddress, changeWalletAddress, feeRate, maxFee)
+			if err != nil {
+				return nil, err
+			}
+			splitTransactions = append(splitTransactions, splitMergeTransaction...)
+
 		}
-		splitTransactions = append(splitTransactions, splitMergeTransaction...)
 
+		return splitTransactions, nil
 	}
-
-	return splitTransactions, nil*/
 }
 
 // splitAndInputPerSplitCounts calculates the number of splits to create, and the number of inputs to assign per split.
-/*func (s *Client) splitAndInputPerSplitCounts(transaction *serialization.PartiallySignedTransaction, transactionMass uint64,
-	changeAddress util.Address, feeRate float64, maxFee uint64) (splitCount, inputsPerSplitCount int, err error) {
+func (s *Client) splitAndInputPerSplitCounts(transaction *serialization.PartiallySignedTransaction, transactionMass uint64, transientMass uint64,
+	changeAddress util.Address, feeRate float64, maxFee uint64, blob []byte) (splitCount, inputsPerSplitCount int, err error) {
 
 	// Create a dummy transaction which is a clone of the original transaction, but without inputs,
 	// to calculate how much mass do all the inputs have
@@ -194,12 +271,11 @@ func (s *Client) maybeSplitAndMergeTransaction(transaction *serialization.Partia
 
 	// Create another dummy transaction, this time one similar to the split transactions we wish to generate,
 	// but with 0 inputs, to calculate how much mass for inputs do we have available in the split transactions
-	splitTransactionWithoutInputs, err := s.createSplitTransaction(transaction, changeAddress, 0, 0, feeRate, maxFee)
+	splitTransactionWithoutInputs, err := s.createSplitTransaction(transaction, changeAddress, 0, 0, feeRate, maxFee, blob)
 	if err != nil {
 		return 0, 0, err
 	}
-	massForEverythingExceptInputsInSplitTransaction :=
-		s.txMassCalculator.CalculateTransactionMass(splitTransactionWithoutInputs.Tx)
+	massForEverythingExceptInputsInSplitTransaction := s.txMassCalculator.CalculateTransactionMass(splitTransactionWithoutInputs.Tx)
 	massForInputsInSplitTransaction := mempool.MaximumStandardTransactionMass - massForEverythingExceptInputsInSplitTransaction
 
 	inputsPerSplitCount = int(massForInputsInSplitTransaction / massPerInput)
@@ -211,8 +287,8 @@ func (s *Client) maybeSplitAndMergeTransaction(transaction *serialization.Partia
 	return splitCount, inputsPerSplitCount, nil
 }
 
-func (s *Client) createSplitTransaction(transaction *serialization.PartiallySignedTransaction,
-	changeAddress util.Address, startIndex int, endIndex int, feeRate float64, maxFee uint64) (*serialization.PartiallySignedTransaction, error) {
+func (c *Client) createSplitTransaction(transaction *serialization.PartiallySignedTransaction,
+	changeAddress util.Address, startIndex int, endIndex int, feeRate float64, maxFee uint64, blob []byte) (*serialization.PartiallySignedTransaction, error) {
 
 	selectedUTXOs := make([]*libkaspawallet.UTXO, 0, endIndex-startIndex)
 	totalSompi := uint64(0)
@@ -230,20 +306,23 @@ func (s *Client) createSplitTransaction(transaction *serialization.PartiallySign
 		totalSompi += selectedUTXOs[i-startIndex].UTXOEntry.Amount()
 	}
 	if len(selectedUTXOs) != 0 {
-		fee, err := s.estimateFee(selectedUTXOs, feeRate, maxFee, totalSompi)
+		fee, err := c.estimateFee(selectedUTXOs, feeRate, maxFee, totalSompi, blob)
 		if err != nil {
 			return nil, err
 		}
 
 		totalSompi -= fee
 	}
-
-	return libkaspawallet.CreateUnsignedTransaction(s.keysFile.ExtendedPublicKeys,
-		s.keysFile.MinimumSignatures,
+	publickey, err := c.extendedKey.Public()
+	if err != nil {
+		return nil, err
+	}
+	return createUnsignedTransaction(publickey.String(),
 		[]*libkaspawallet.Payment{{
 			Address: changeAddress,
 			Amount:  totalSompi,
-		}}, selectedUTXOs)
+		}}, selectedUTXOs, blob)
+
 }
 
 func (s *Client) mergeTransaction(
@@ -311,6 +390,4 @@ func (s *Client) mergeTransaction(
 
 	return libkaspawallet.CreateUnsignedTransaction(s.keysFile.ExtendedPublicKeys,
 		s.keysFile.MinimumSignatures, payments, utxos)
-}
-
-*/
+}*/

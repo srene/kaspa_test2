@@ -38,6 +38,11 @@ func (c *Client) estimateMassAfterSignatures(transaction *serialization.Partiall
 	return EstimateMassAfterSignatures(transaction, false, 1, c.txMassCalculator)
 }
 
+func (c *Client) estimateTransientMassAfterSignatures(transaction *serialization.PartiallySignedTransaction) (uint64, error) {
+	//return estimateComputeMassAfterSignatures(transaction, s.keysFile.ECDSA, s.keysFile.MinimumSignatures, s.txMassCalculator)
+	return estimateTransientMass(transaction)
+}
+
 func (c *Client) estimateComputeMassAfterSignatures(transaction *serialization.PartiallySignedTransaction) (uint64, error) {
 	//return estimateComputeMassAfterSignatures(transaction, s.keysFile.ECDSA, s.keysFile.MinimumSignatures, s.txMassCalculator)
 	return estimateComputeMassAfterSignatures(transaction, false, 1, c.txMassCalculator)
@@ -67,6 +72,15 @@ func estimateComputeMassAfterSignatures(transaction *serialization.PartiallySign
 	}
 
 	return txMassCalculator.CalculateTransactionMass(transactionWithSignatures), nil
+}
+
+func estimateTransientMass(transaction *serialization.PartiallySignedTransaction) (uint64, error) {
+
+	serializedTx, err := serialization.SerializePartiallySignedTransaction(transaction)
+	if err != nil {
+		return uint64(0), err
+	}
+	return uint64(len(serializedTx) * TRANSIENT_BYTE_TO_MASS_FACTOR), nil
 }
 
 func EstimateMassAfterSignatures(transaction *serialization.PartiallySignedTransaction, ecdsa bool, minimumSignatures uint32, txMassCalculator *txmass.Calculator) (uint64, error) {

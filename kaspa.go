@@ -5,6 +5,7 @@ import (
 	// Replace with actual path
 
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log"
 	"time"
@@ -20,8 +21,10 @@ func main() {
 	if err != nil {
 		log.Fatal("error while establishing connection to DA layer: %w", err)
 	}
-
-	txHash, err := client.SubmitBlob([]byte{0x01})
+	blobsize := 24000
+	token := make([]byte, blobsize)
+	rand.Read(token)
+	txHash, err := client.SubmitBlob(token)
 	if err != nil {
 		log.Fatal("Error sending %s", err)
 	}

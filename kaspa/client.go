@@ -22,7 +22,7 @@ import (
 const (
 	minChangeTarget                     = constants.SompiPerKaspa * 10
 	minFeeRate                          = 1.0
-	address                             = "kaspatest:qp96y8xa6gqlh3a5c6wu9x73a5egvsw2vk7w7nzm8x98wvkavjlg29zvta4m6"
+	address                             = "kaspatest:qp75u7cuphjwyq9j6ghe2v0j3gtvxlppyurq279h4ckpdc7umdh6vrusw9c7d"
 	numIndexesToQueryForFarAddresses    = 100
 	numIndexesToQueryForRecentAddresses = 1000
 	// Purpose and CoinType constants
@@ -70,20 +70,20 @@ func (was walletAddressSet) strings() []string {
 }
 
 type Client struct {
-	rpcClient                       *rpcclient.RPCClient // RPC client for ongoing user requests
-	httpClient                      *http.Client
-	params                          *dagconfig.Params
-	coinbaseMaturity                uint64 // Is different from default if we use testnet-11
-	usedOutpoints                   map[externalapi.DomainOutpoint]time.Time
-	startTimeOfLastCompletedRefresh time.Time
-	apiURL                          string
-	utxosSortedByAmount             []*walletUTXO
-	extendedKey                     *bip32.ExtendedKey
+	rpcClient        *rpcclient.RPCClient // RPC client for ongoing user requests
+	httpClient       *http.Client
+	params           *dagconfig.Params
+	coinbaseMaturity uint64 // Is different from default if we use testnet-11
+	usedOutpoints    map[externalapi.DomainOutpoint]time.Time
+	//startTimeOfLastCompletedRefresh time.Time
+	apiURL              string
+	utxosSortedByAmount []*walletUTXO
+	extendedKey         *bip32.ExtendedKey
 	//keysFile                        *keys.File
 	txMassCalculator     *txmass.Calculator
 	mempoolExcludedUTXOs map[externalapi.DomainOutpoint]*walletUTXO
 	addressSet           walletAddressSet
-	nextSyncStartIndex   uint32
+	//nextSyncStartIndex   uint32
 }
 
 var _ KaspaClient = &Client{}
@@ -129,13 +129,13 @@ func NewClient(ctx context.Context, config *Config) (KaspaClient, error) {
 		httpClient:       httpClient,
 		coinbaseMaturity: 100,
 		//keysFile:           keysFile,
-		extendedKey:        master,
-		params:             params,
-		nextSyncStartIndex: 0,
-		apiURL:             config.RPCURL,
-		addressSet:         make(walletAddressSet),
-		txMassCalculator:   txmass.NewCalculator(1, 10, 1000),
-		usedOutpoints:      map[externalapi.DomainOutpoint]time.Time{},
+		extendedKey: master,
+		params:      params,
+		//nextSyncStartIndex: 0,
+		apiURL:           config.RPCURL,
+		addressSet:       make(walletAddressSet),
+		txMassCalculator: txmass.NewCalculator(1, 10, 1000),
+		//usedOutpoints:      map[externalapi.DomainOutpoint]time.Time{},
 	}
 	return kaspaClient, nil
 
@@ -174,7 +174,7 @@ func (c *Client) SubmitBlob(blob []byte) (string, error) {
 
 	fmt.Printf("Broadcasting %d transaction(s)\n", len(signedTransactions))
 
-	const chunkSize = 100 // To avoid sending a message bigger than the gRPC max message size, we split it to chunks
+	/*const chunkSize = 100 // To avoid sending a message bigger than the gRPC max message size, we split it to chunks
 	for offset := 0; offset < len(signedTransactions); offset += chunkSize {
 		end := len(signedTransactions)
 		if offset+chunkSize <= len(signedTransactions) {
@@ -190,9 +190,13 @@ func (c *Client) SubmitBlob(blob []byte) (string, error) {
 		for _, txID := range txIDs {
 			return txID, nil
 		}
+	}*/
+	txIds, err := c.broadcast(signedTransactions, false)
+	if err != nil {
+		return "", err
 	}
-
-	return "", fmt.Errorf("not found")
+	return txIds[0], nil
+	//return "", fmt.Errorf("not found")
 
 }
 
