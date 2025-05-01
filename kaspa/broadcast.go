@@ -1,6 +1,8 @@
 package kaspa
 
 import (
+	"fmt"
+
 	"github.com/kaspanet/kaspad/app/appmessage"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet"
 	"github.com/kaspanet/kaspad/domain/consensus/model/externalapi"
@@ -28,7 +30,7 @@ func (s *Client) broadcast(transactions [][]byte, isDomain bool) ([]string, erro
 			return nil, err
 		}
 		//	}
-
+		fmt.Println("tx", tx.Inputs[0].PreviousOutpoint.TransactionID)
 		txIDs[i], err = sendTransaction(s.rpcClient, tx)
 		if err != nil {
 			return nil, err

@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal("error while establishing connection to DA layer: %w", err)
 	}
-	blobsize := 1000
+	blobsize := 1000000
 	token := make([]byte, blobsize)
 	rand.Read(token)
 	txHash, err := client.SubmitBlob(token)
