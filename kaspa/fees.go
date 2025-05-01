@@ -7,8 +7,10 @@ import (
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet/serialization"
 	"github.com/kaspanet/kaspad/domain/consensus/model/externalapi"
 	"github.com/kaspanet/kaspad/domain/consensus/utils/constants"
+	"github.com/kaspanet/kaspad/domain/consensus/utils/utxo"
 	"github.com/kaspanet/kaspad/util"
 	"github.com/kaspanet/kaspad/util/txmass"
+	"github.com/pkg/errors"
 )
 
 /*func (s *Client) transactionFeeRate(psTx *serialization.PartiallySignedTransaction) (float64, error) {
@@ -92,7 +94,7 @@ func EstimateMassAfterSignatures(transaction *serialization.PartiallySignedTrans
 	return txMassCalculator.CalculateTransactionOverallMass(transactionWithSignatures), nil
 }
 
-/*func (s *Client) moreUTXOsForMergeTransaction(alreadySelectedUTXOs []*libkaspawallet.UTXO, requiredAmount uint64, feeRate float64) (
+func (s *Client) moreUTXOsForMergeTransaction(alreadySelectedUTXOs []*libkaspawallet.UTXO, requiredAmount uint64, feeRate float64) (
 	additionalUTXOs []*libkaspawallet.UTXO, totalValueAdded uint64, err error) {
 
 	dagInfo, err := s.rpcClient.GetBlockDAGInfo()
@@ -130,7 +132,7 @@ func EstimateMassAfterSignatures(transaction *serialization.PartiallySignedTrans
 	}
 
 	return additionalUTXOs, totalValueAdded, nil
-}*/
+}
 
 func (c *Client) isUTXOSpendable(entry *walletUTXO, virtualDAAScore uint64) bool {
 	if !entry.UTXOEntry.IsCoinbase() {
@@ -210,7 +212,7 @@ func (c *Client) estimateFee(selectedUTXOs []*libkaspawallet.UTXO, feeRate float
 	return min(uint64(math.Ceil(float64(mass)*feeRate)), maxFee), nil
 }
 
-/*func (s *Client) estimateFeePerInput(feeRate float64) (uint64, error) {
+func (s *Client) estimateFeePerInput(feeRate float64) (uint64, error) {
 	mockUTXO := &libkaspawallet.UTXO{
 		Outpoint: &externalapi.DomainOutpoint{
 			TransactionID: externalapi.DomainTransactionID{},
@@ -223,9 +225,12 @@ func (c *Client) estimateFee(selectedUTXOs []*libkaspawallet.UTXO, feeRate float
 		DerivationPath: "m",
 	}
 
-	mockTx, err := libkaspawallet.CreateUnsignedTransaction(s.keysFile.ExtendedPublicKeys,
-		s.keysFile.MinimumSignatures,
-		nil, []*libkaspawallet.UTXO{mockUTXO})
+	publickey, err := s.extendedKey.Public()
+	if err != nil {
+		return 0, err
+	}
+	mockTx, err := createUnsignedTransaction(publickey.String(), nil, []*libkaspawallet.UTXO{mockUTXO}, []byte{})
+
 	if err != nil {
 		return 0, err
 	}
@@ -237,9 +242,8 @@ func (c *Client) estimateFee(selectedUTXOs []*libkaspawallet.UTXO, feeRate float
 		return 0, err
 	}
 
-	mockTxWithoutUTXO, err := libkaspawallet.CreateUnsignedTransaction(s.keysFile.ExtendedPublicKeys,
-		s.keysFile.MinimumSignatures,
-		nil, nil)
+	mockTxWithoutUTXO, err := createUnsignedTransaction(publickey.String(), nil, nil, []byte{})
+
 	if err != nil {
 		return 0, err
 	}
@@ -252,4 +256,4 @@ func (c *Client) estimateFee(selectedUTXOs []*libkaspawallet.UTXO, feeRate float
 	inputMass := mass - massWithoutUTXO
 
 	return uint64(float64(inputMass) * feeRate), nil
-}*/
+}

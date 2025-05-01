@@ -195,7 +195,7 @@ func (c *Client) SubmitBlob(blob []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return txIds[0], nil
+	return txIds[len(txIds)-1], nil
 	//return "", fmt.Errorf("not found")
 
 }
